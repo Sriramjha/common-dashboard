@@ -617,15 +617,20 @@ def _correlation_rows_from_cx_alerts_by_definition(
     Correlation rows with alertDefinitionName / alertRuleName for never-triggered and hygiene
     name matching. Fire activity is derived from cx_alerts Prometheus series, not REST incidents.
 
-    When ``definition_names`` is set (from alerts.items), PromQL runs in batches of
-    CORALOGIX_INCIDENTS_METRICS_CORRELATION_BATCH so Prometheus does not truncate
-    high-cardinality ``by (alert_def_name,…)`` results.
+    Strategy: PromQL runs as ``query_range`` in time chunks (default 10d, knob
+    ``CORALOGIX_CX_ALERTS_TIMELINE_RANGE_BATCH_DAYS``) with ``step=86400`` and a ``[1d]``
+    range — same shape that already works for the hygiene timeline. This sidesteps the
+    HTTP 500/422 some tenants return for the heavier single instant ``sum_over_time(...[30d])``
+    form. When ``definition_names`` is set (from alerts.items), names are still split into
+    batches of ``CORALOGIX_INCIDENTS_METRICS_CORRELATION_BATCH`` to keep per-request series
+    cardinality low. A definition is considered "fired" if any chunk-day has value > 0.
     """
     end_utc = datetime.now(timezone.utc)
-    start_utc = end_utc - timedelta(days=days)
+    start_utc = end_utc - timedelta(days=max(1, min(366, days)))
+    start_unix = int(start_utc.timestamp())
+    end_unix = int(end_utc.timestamp())
     w_start = _iso_z(start_utc)
     w_end = _iso_z(end_utc)
-    rng = f"{max(1, min(366, days))}d"
     matchers = _cx_alerts_security_matchers_promql()
     base_sel = f"cx_alerts{{{matchers}}}"
 
@@ -642,11 +647,69 @@ def _correlation_rows_from_cx_alerts_by_definition(
             "note":         "",
         }
 
-    to = _incidents_prometheus_http_timeout()
+    to = max(120, _incidents_prometheus_http_timeout())
     order = ("P1", "P2", "P3", "P4", "P5")
     rows_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
     err_last: Optional[str] = None
-    batch_queries = 0
+    chunk_days = _cx_alerts_timeline_range_batch_days()
+    chunk_sec = chunk_days * 86400
+    queries_total = 0
+
+    def _absorb_matrix(resp: Dict[str, Any]) -> None:
+        if not isinstance(resp, dict) or resp.get("status") != "success":
+            return
+        data = resp.get("data") or {}
+        if data.get("resultType") != "matrix":
+            return
+        for series in data.get("result") or []:
+            if not isinstance(series, dict):
+                continue
+            metric = series.get("metric") or {}
+            nm = str(metric.get("alert_def_name") or "").strip()
+            if not nm:
+                continue
+            pr = str(metric.get("alert_def_priority") or "P5").strip().upper()
+            if pr not in order:
+                pr = "P5"
+            fired = False
+            for pt in series.get("values") or []:
+                if not isinstance(pt, list) or len(pt) < 2:
+                    continue
+                try:
+                    if float(pt[1]) > 0:
+                        fired = True
+                        break
+                except (TypeError, ValueError):
+                    continue
+            if not fired:
+                continue
+            key = (nm.casefold(), pr)
+            rows_by_key.setdefault(key, {
+                "name":                nm[:500],
+                "alertRuleName":       nm[:500],
+                "alertDefinitionName": nm[:500],
+                "priority":            pr,
+                "sourceAlertId":       "",
+                "created":             w_end,
+            })
+
+    def _run_range(promql: str) -> Optional[str]:
+        """Walk [start_unix, end_unix) in chunk_sec slices; return last error string or None."""
+        nonlocal queries_total
+        last_err: Optional[str] = None
+        cursor = start_unix
+        while cursor < end_unix:
+            chunk_end = min(end_unix, cursor + chunk_sec)
+            queries_total += 1
+            try:
+                resp = _prometheus_query_range(promql, cursor, chunk_end, 86400, timeout=to)
+            except RuntimeError as e:
+                last_err = str(e)[:500]
+                cursor = chunk_end
+                continue
+            _absorb_matrix(resp)
+            cursor = chunk_end
+        return last_err
 
     names = [str(n).strip() for n in (definition_names or []) if str(n).strip()]
     if names:
@@ -657,73 +720,22 @@ def _correlation_rows_from_cx_alerts_by_definition(
             if not name_m:
                 continue
             sel = f"cx_alerts{{{matchers},{name_m}}}"
-            q = f"sum(sum_over_time(({sel}[{rng}]))) by (alert_def_name, alert_def_priority)"
-            batch_queries += 1
-            try:
-                resp = _prometheus_instant_query(q, timeout=to)
-            except RuntimeError as e:
-                err_last = str(e)[:500]
-                continue
-            for m, fv in _prometheus_vector_labeled_values(resp):
-                nm = str(m.get("alert_def_name") or "").strip()
-                if not nm or fv <= 0:
-                    continue
-                pr = str(m.get("alert_def_priority") or "P5").strip().upper()
-                if pr not in order:
-                    pr = "P5"
-                key = (nm.casefold(), pr)
-                rows_by_key[key] = {
-                    "name":                nm[:500],
-                    "alertRuleName":       nm[:500],
-                    "alertDefinitionName": nm[:500],
-                    "priority":            pr,
-                    "sourceAlertId":       "",
-                    "created":             w_end,
-                }
+            q = f"sum(sum_over_time(({sel}[1d]))) by (alert_def_name, alert_def_priority)"
+            e = _run_range(q)
+            if e:
+                err_last = e
         rows: List[Dict[str, Any]] = list(rows_by_key.values())
     else:
-        q = f"sum(sum_over_time(({base_sel}[{rng}]))) by (alert_def_name, alert_def_priority)"
-        batch_queries = 1
-        try:
-            resp = _prometheus_instant_query(q, timeout=to)
-        except RuntimeError as e:
-            return {
-                "count":        0,
-                "rows":         [],
-                "window_start": w_start,
-                "window_end":   w_end,
-                "window_days":  days,
-                "strategy":     "cx_alerts_metrics_by_definition",
-                "error":        str(e)[:500],
-                "truncated":    False,
-                "note":         "",
-            }
-        rows = []
-        for m, fv in _prometheus_vector_labeled_values(resp):
-            nm = str(m.get("alert_def_name") or "").strip()
-            if not nm or fv <= 0:
-                continue
-            pr = str(m.get("alert_def_priority") or "P5").strip().upper()
-            if pr not in order:
-                pr = "P5"
-            rows.append({
-                "name":                nm[:500],
-                "alertRuleName":       nm[:500],
-                "alertDefinitionName": nm[:500],
-                "priority":            pr,
-                "sourceAlertId":       "",
-                "created":             w_end,
-            })
+        q = f"sum(sum_over_time(({base_sel}[1d]))) by (alert_def_name, alert_def_priority)"
+        err_last = _run_range(q)
+        rows = list(rows_by_key.values())
 
     note_parts = [
-        f"Rolling {days}d UTC. Fired definitions from cx_alerts sum_over_time (not REST incidents).",
+        f"Rolling {days}d UTC from cx_alerts query_range chunks ({chunk_days}d each, step=1d).",
         "Compared to alerts.items by definition name (case-insensitive).",
+        f"Total PromQL requests: {queries_total} "
+        f"(batch≤{_metrics_correlation_batch_size()} names × ~{max(1, (end_unix - start_unix + chunk_sec - 1) // chunk_sec)} chunks).",
     ]
-    if names and batch_queries > 0:
-        note_parts.append(
-            f"Batched metrics correlation: {batch_queries} PromQL request(s) "
-            f"(batch size ≤{_metrics_correlation_batch_size()} names)."
-        )
     if err_last and not rows:
         return {
             "count":        0,
@@ -737,7 +749,7 @@ def _correlation_rows_from_cx_alerts_by_definition(
             "note":         " ".join(note_parts),
         }
     if err_last:
-        note_parts.append(f"Some batches failed: {err_last[:220]}")
+        note_parts.append(f"Some chunks failed: {err_last[:220]}")
 
     return {
         "count":        len(rows),
