@@ -841,6 +841,7 @@ def _promql_matcher_alert_def_names(batch: List[str]) -> str:
     return f'alert_def_name=~"{alts}"'
 
 
+def _api_origin_from_alerts_base() -> str:
     """https://api.xx.coralogix.com from CORALOGIX_API_BASE (…/api/v2/external)."""
     base = ALERTS_BASE.rstrip("/")
     for marker in ("/api/v2/external", "/api/v2"):
