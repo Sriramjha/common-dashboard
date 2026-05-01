@@ -614,16 +614,24 @@ def _correlation_rows_from_cx_alerts_by_definition(
     definition_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Correlation rows with alertDefinitionName / alertRuleName for never-triggered and hygiene
-    name matching. Fire activity is derived from cx_alerts Prometheus series, not REST incidents.
+    Correlation rows with alertDefinitionName / alertRuleName for never-triggered and
+    hygiene name matching. Fire activity is derived from cx_alerts Prometheus series,
+    not REST incidents.
 
-    Strategy: PromQL runs as ``query_range`` in time chunks (default 10d, knob
-    ``CORALOGIX_CX_ALERTS_TIMELINE_RANGE_BATCH_DAYS``) with ``step=86400`` and a ``[1d]``
-    range — same shape that already works for the hygiene timeline. This sidesteps the
-    HTTP 500/422 some tenants return for the heavier single instant ``sum_over_time(...[30d])``
-    form. When ``definition_names`` is set (from alerts.items), names are still split into
-    batches of ``CORALOGIX_INCIDENTS_METRICS_CORRELATION_BATCH`` to keep per-request series
-    cardinality low. A definition is considered "fired" if any chunk-day has value > 0.
+    Strategy: a **single** ``query_range`` over the full window with ``[1d]`` /
+    ``step=86400`` and ``by (alert_def_name, alert_def_priority)``. The security
+    matchers (``alert_def_label_alert_type="security"`` etc.) cap series count to
+    ~100–200 per tenant, well inside Coralogix's per-query series limit. We do NOT
+    add an ``alert_def_name=~"a|b|…"`` regex matcher: combined with the security
+    matchers it explodes the analyzed-series count and triggers HTTP 500 / 422
+    (``ViolationTypeTotalSeriesAnalyzed``) on some tenants. ``definition_names`` is
+    accepted for backwards compatibility but only used as note metadata; client-side
+    name correlation against ``alerts.items`` happens later in
+    ``build_never_triggered_definitions``.
+
+    If the single call fails (e.g. tenant truly has high cardinality in 30d), we
+    fall back to walking the window in
+    ``CORALOGIX_CX_ALERTS_TIMELINE_RANGE_BATCH_DAYS`` chunks (default 10d).
     """
     end_utc = datetime.now(timezone.utc)
     start_utc = end_utc - timedelta(days=max(1, min(366, days)))
@@ -650,9 +658,6 @@ def _correlation_rows_from_cx_alerts_by_definition(
     to = max(120, _incidents_prometheus_http_timeout())
     order = ("P1", "P2", "P3", "P4", "P5")
     rows_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    err_last: Optional[str] = None
-    chunk_days = _cx_alerts_timeline_range_batch_days()
-    chunk_sec = chunk_days * 86400
     queries_total = 0
 
     def _absorb_matrix(resp: Dict[str, Any]) -> None:
@@ -693,49 +698,50 @@ def _correlation_rows_from_cx_alerts_by_definition(
                 "created":             w_end,
             })
 
-    def _run_range(promql: str) -> Optional[str]:
-        """Walk [start_unix, end_unix) in chunk_sec slices; return last error string or None."""
-        nonlocal queries_total
-        last_err: Optional[str] = None
+    promql = f"sum(sum_over_time(({base_sel}[1d]))) by (alert_def_name, alert_def_priority)"
+
+    err_last: Optional[str] = None
+    fallback_used = False
+
+    queries_total += 1
+    try:
+        resp = _prometheus_query_range(promql, start_unix, end_unix, 86400, timeout=to)
+        _absorb_matrix(resp)
+    except RuntimeError as e:
+        err_last = str(e)[:500]
+        # Fallback: walk the window in chunks. Same PromQL, no name matcher.
+        fallback_used = True
+        chunk_days = _cx_alerts_timeline_range_batch_days()
+        chunk_sec = chunk_days * 86400
         cursor = start_unix
+        chunk_err: Optional[str] = None
         while cursor < end_unix:
             chunk_end = min(end_unix, cursor + chunk_sec)
             queries_total += 1
             try:
                 resp = _prometheus_query_range(promql, cursor, chunk_end, 86400, timeout=to)
-            except RuntimeError as e:
-                last_err = str(e)[:500]
+            except RuntimeError as ce:
+                chunk_err = str(ce)[:500]
                 cursor = chunk_end
                 continue
             _absorb_matrix(resp)
             cursor = chunk_end
-        return last_err
+        if rows_by_key:
+            err_last = chunk_err  # cleared if some chunks succeeded; else stays
+        else:
+            err_last = chunk_err or err_last
 
-    names = [str(n).strip() for n in (definition_names or []) if str(n).strip()]
-    if names:
-        bs = _metrics_correlation_batch_size()
-        for i in range(0, len(names), bs):
-            chunk = names[i : i + bs]
-            name_m = _promql_matcher_alert_def_names(chunk)
-            if not name_m:
-                continue
-            sel = f"cx_alerts{{{matchers},{name_m}}}"
-            q = f"sum(sum_over_time(({sel}[1d]))) by (alert_def_name, alert_def_priority)"
-            e = _run_range(q)
-            if e:
-                err_last = e
-        rows: List[Dict[str, Any]] = list(rows_by_key.values())
-    else:
-        q = f"sum(sum_over_time(({base_sel}[1d]))) by (alert_def_name, alert_def_priority)"
-        err_last = _run_range(q)
-        rows = list(rows_by_key.values())
+    rows: List[Dict[str, Any]] = list(rows_by_key.values())
 
+    n_def_names = len([str(n).strip() for n in (definition_names or []) if str(n).strip()])
     note_parts = [
-        f"Rolling {days}d UTC from cx_alerts query_range chunks ({chunk_days}d each, step=1d).",
-        "Compared to alerts.items by definition name (case-insensitive).",
-        f"Total PromQL requests: {queries_total} "
-        f"(batch≤{_metrics_correlation_batch_size()} names × ~{max(1, (end_unix - start_unix + chunk_sec - 1) // chunk_sec)} chunks).",
+        f"Rolling {days}d UTC from cx_alerts {'query_range chunks' if fallback_used else 'query_range (single call)'} (step=1d).",
+        "Compared to alerts.items by definition name (case-insensitive) downstream.",
+        f"Total PromQL requests: {queries_total}.",
     ]
+    if n_def_names:
+        note_parts.append(f"alerts.items definition names available for client-side filter: {n_def_names}.")
+
     if err_last and not rows:
         return {
             "count":        0,
@@ -749,7 +755,7 @@ def _correlation_rows_from_cx_alerts_by_definition(
             "note":         " ".join(note_parts),
         }
     if err_last:
-        note_parts.append(f"Some chunks failed: {err_last[:220]}")
+        note_parts.append(f"Some calls failed: {err_last[:220]}")
 
     return {
         "count":        len(rows),
