@@ -39,10 +39,12 @@ jobs:
           chmod 600 ~/.ssh/ec2_deploy
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
           RSYNC_SSH='ssh -i ~/.ssh/ec2_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new'
+          $RSYNC_SSH "${EC2_USER}@${EC2_HOST}" \
+            'sudo chown -R ubuntu:ubuntu /opt/common-dashboard'
           rsync -avz \
             -e "$RSYNC_SSH" \
             --delete \
             --filter="merge deploy/rsync-filters.txt" \
             ./ "${EC2_USER}@${EC2_HOST}:/opt/common-dashboard/"
           $RSYNC_SSH "${EC2_USER}@${EC2_HOST}" \
-            'sudo systemctl enable common-dashboard nginx 2>/dev/null; sudo systemctl restart common-dashboard nginx'
+            'sudo chown -R dashboard:dashboard /opt/common-dashboard; sudo systemctl enable common-dashboard nginx 2>/dev/null; sudo systemctl restart common-dashboard nginx'
