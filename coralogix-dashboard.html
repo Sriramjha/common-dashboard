@@ -112,12 +112,6 @@
       color: var(--text); cursor: pointer; max-width: 240px;
     }
     .dash-add-acc-btn { font-size: 12px !important; padding: 6px 10px !important; }
-    .dash-refresh-btn { font-size: 12px !important; padding: 6px 10px !important; }
-    .dash-refresh-status {
-      font-size: 11px; font-weight: 600; color: var(--muted); max-width: 220px;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .dash-refresh-status.is-error { color: var(--orange); white-space: normal; max-width: 320px; }
 
     .dash-add-dialog { border: none; border-radius: 14px; padding: 0; max-width: 440px; width: calc(100% - 32px); box-shadow: var(--shadow); }
     .dash-add-dialog::backdrop { background: rgba(15,23,42,0.45); }
@@ -1091,8 +1085,6 @@
   <div class="header-right">
     <label class="dash-account-label" for="dashAccountSelect">Account</label>
     <select id="dashAccountSelect" class="dash-account-select" aria-label="Coralogix dashboard account" title="Each account uses its own data file from refresh.py"></select>
-    <button type="button" class="btn-ghost dash-refresh-btn" id="dashRefreshBtn" title="Re-run refresh.py for the selected account. Needs localhost or serve.py admin allowlist (CORALOGIX_DASH_ADMIN_ALLOW_CIDR + nginx X-Forwarded-For).">Refresh data</button>
-    <span id="dashRefreshStatus" class="dash-refresh-status" role="status" aria-live="polite" style="display:none;"></span>
     <button type="button" class="btn-ghost dash-add-acc-btn" id="dashEditAccountEnvBtn" disabled title="Edit secrets for the selected account (localhost or server allowlist).">Edit env</button>
     <button type="button" class="btn-ghost dash-add-acc-btn" id="dashAddAccountBtn" title="Writes secrets on the server (localhost or allowlisted client). Never committed to git.">＋ Add</button>
     <button class="btn-ghost" id="expandAllBtn" onclick="toggleAll()" data-tip="Expand or collapse all sections">
@@ -3164,7 +3156,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (msg) {
                   msg.style.display = 'block';
                   msg.textContent = 'Account was saved, but refresh.py failed: ' + String(refr.error || 'unknown')
-                    + '. Fix credentials in accounts/secrets/' + id + '.env then use Refresh data or: python3 refresh.py --account ' + id;
+                    + '. Fix credentials in accounts/secrets/' + id + '.env then run refresh on the server (python3 refresh.py --account ' + id + ').';
                 }
                 if (refr.logTail) console.warn('[dashboard] refresh.py log tail', refr.logTail);
                 return;
@@ -3189,7 +3181,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return dashPollUntilSnapshotUpdated(snapFn, priorState, postMs).then(function (ok) {
                   if (!ok && msg) {
                     msg.style.display = 'block';
-                    msg.textContent = 'Account saved; snapshot still running or timed out. Use Refresh data when ready.';
+                    msg.textContent = 'Account saved; snapshot still running or timed out. Reload the page when ready.';
                   }
                   return finishAdd();
                 });
@@ -3362,7 +3354,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (msg) {
                   msg.style.display = 'block';
                   msg.textContent = 'Saved env file, but refresh.py failed: ' + String(refr.error || 'unknown')
-                    + '. Fix values or run Refresh data.';
+                    + '. Fix values or run refresh on the server.';
                 }
                 if (refr.logTail) console.warn('[dashboard] refresh log tail', refr.logTail);
                 return;
@@ -3385,11 +3377,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 var postMs = Date.now();
                 return dashPollUntilSnapshotUpdated(snapFn, priorState, postMs).then(function (ok) {
                   if (!ok) {
-                    var stEl = document.getElementById('dashRefreshStatus');
-                    if (stEl) {
-                      stEl.style.display = '';
-                      stEl.classList.add('is-error');
-                      stEl.textContent = 'Saved; snapshot timed out. Use Refresh data if numbers look stale.';
+                    if (msg) {
+                      msg.style.display = 'block';
+                      msg.classList.add('is-error');
+                      msg.textContent = 'Saved; snapshot timed out. Reload the page when the server refresh finishes.';
                     }
                   }
                   return finishEnv();
@@ -3433,12 +3424,7 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       if (sessionStorage.getItem('coralogixDashPendingBgRefresh') === '1') {
         sessionStorage.removeItem('coralogixDashPendingBgRefresh');
-        var _bgRef = document.getElementById('dashRefreshStatus');
-        if (_bgRef) {
-          _bgRef.style.display = '';
-          _bgRef.classList.remove('is-error');
-          _bgRef.textContent = 'Data refresh is running in the background (new account or saved env). Use Refresh data in a few minutes when it finishes.';
-        }
+        console.info('[dashboard] Background refresh may still be running; reload the page in a few minutes.');
       }
     } catch (e) { /* ignore */ }
 
@@ -5939,94 +5925,6 @@ function applyAhcOverlapUIFlags(ahcPresent) {
     setInterval(updateTime, 60000);
 
     var _DASH_HOURLY_MS = 60 * 60 * 1000;
-    function triggerDashboardRefresh() {
-      var btn = document.getElementById('dashRefreshBtn');
-      var statusEl = document.getElementById('dashRefreshStatus');
-      var sel = document.getElementById('dashAccountSelect');
-      if (window.location.protocol === 'file:') {
-        if (statusEl) {
-          statusEl.style.display = '';
-          statusEl.classList.add('is-error');
-          statusEl.textContent = 'Open via serve.py to refresh from the browser.';
-        }
-        return;
-      }
-      if (!btn) return;
-      btn.disabled = true;
-      if (statusEl) {
-        statusEl.style.display = '';
-        statusEl.classList.remove('is-error');
-        statusEl.textContent = 'Preparing refresh…';
-      }
-      var aid = sel && sel.value ? sel.value : 'default';
-      var snapFn = _safeDataFilename(window.__dashDataFilename);
-      dashCaptureSnapshotPollState(snapFn).then(function (st) {
-        var priorState = { priorAt: st.priorAt || '', startedWithoutFile: !!st.startedWithoutFile };
-        return fetch(dashApiUrl('/api/refresh'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accountId: aid }),
-        })
-          .then(function (r) {
-            return r.text().then(function (t) {
-              var j = {};
-              try { j = t ? JSON.parse(t) : {}; } catch (e) { j = {}; }
-              return { ok: r.ok, status: r.status, j: j };
-            });
-          })
-          .then(function (x) {
-            if (!(x.ok && x.j && x.j.ok)) {
-              var err = (x.j && x.j.error) ? String(x.j.error) : ('HTTP ' + x.status);
-              if (x.status === 403) err = 'Refresh denied (403). Localhost or server admin allowlist required.';
-              if (statusEl) {
-                statusEl.classList.add('is-error');
-                statusEl.textContent = err;
-              }
-              if (x.j && x.j.logTail) console.warn('[dashboard] refresh.py output tail', x.j.logTail);
-              btn.disabled = false;
-              return null;
-            }
-            if (statusEl) statusEl.textContent = 'Refreshing… waiting for new snapshot';
-            postMs = Date.now();
-            return dashPollUntilSnapshotUpdated(snapFn, priorState, postMs).then(function (ok) {
-              if (!ok) {
-                if (statusEl) {
-                  statusEl.classList.add('is-error');
-                  statusEl.textContent = 'Timed out waiting for data — check the terminal or run refresh.py manually.';
-                }
-                btn.disabled = false;
-                return;
-              }
-              return loadDashboardJsonFile(snapFn).then(function () {
-                if (!window.__dashDataLoadOk) {
-                  if (statusEl) {
-                    statusEl.classList.add('is-error');
-                    statusEl.textContent = 'Snapshot updated but could not load JSON — try Reload.';
-                  }
-                  btn.disabled = false;
-                  return;
-                }
-                dashReapplyFromDataJson();
-                if (statusEl) {
-                  statusEl.classList.remove('is-error');
-                  statusEl.textContent = 'Up to date.';
-                }
-                btn.disabled = false;
-              });
-            });
-          });
-      }).catch(function (e) {
-        if (statusEl) {
-          statusEl.classList.add('is-error');
-          statusEl.textContent = (e && e.message) ? e.message : 'Network error';
-        }
-        btn.disabled = false;
-      });
-    }
-    window.triggerDashboardRefresh = triggerDashboardRefresh;
-
-    var refreshBtn = document.getElementById('dashRefreshBtn');
-    if (refreshBtn) refreshBtn.addEventListener('click', triggerDashboardRefresh);
 
     if (window.location.protocol !== 'file:') {
       setInterval(function () {

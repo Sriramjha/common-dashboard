@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """HTTP server for the Coralogix dashboard + account list API (writes locked to localhost unless allowlisted).
 
-Auto-refresh: by default, ``refresh.py`` runs once per day at **00:00 UTC** while this process is up.
-Override with ``CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=0`` and set ``CORALOGIX_DASH_AUTO_REFRESH_SEC``.
+Auto-refresh: by default, ``refresh.py`` runs **once per week** (Monday 00:00 UTC) while this process is up.
+Set ``CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=1`` for daily 00:00 UTC instead.
+Set ``CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_UTC=0`` and ``CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=0`` to use
+``CORALOGIX_DASH_AUTO_REFRESH_SEC`` (interval mode) or disable both plus ``CORALOGIX_DASH_AUTO_REFRESH_SEC=0``.
 """
 from __future__ import annotations
 
@@ -111,6 +113,40 @@ def _seconds_until_next_utc_midnight() -> float:
     return max(0.5, (nxt - now).total_seconds())
 
 
+def _parse_auto_refresh_weekday() -> int:
+    """CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_WEEKDAY: 0=Monday … 6=Sunday (datetime.weekday()). Default 0."""
+    raw = (os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_WEEKDAY") or "0").strip()
+    try:
+        d = int(raw, 10)
+    except ValueError:
+        d = 0
+    return max(0, min(6, d))
+
+
+def _parse_auto_refresh_weekly_hour() -> int:
+    """CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_HOUR: 0–23 UTC. Default 0."""
+    raw = (os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_HOUR") or "0").strip()
+    try:
+        h = int(raw, 10)
+    except ValueError:
+        h = 0
+    return max(0, min(23, h))
+
+
+def _seconds_until_next_weekly_utc_slot() -> float:
+    """Seconds until the next CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_WEEKDAY at CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_HOUR UTC."""
+    now = datetime.now(timezone.utc)
+    wday = _parse_auto_refresh_weekday()
+    hour = _parse_auto_refresh_weekly_hour()
+    days_ahead = wday - now.weekday()
+    if days_ahead < 0:
+        days_ahead += 7
+    nxt = (now + timedelta(days=days_ahead)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    if nxt <= now:
+        nxt += timedelta(days=7)
+    return max(0.5, (nxt - now).total_seconds())
+
+
 def _run_auto_refresh_accounts_pass() -> None:
     """One refresh cycle for all accounts selected by CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS."""
     mode = os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS", "default").strip().lower()
@@ -162,6 +198,32 @@ def _auto_refresh_worker_daily_utc() -> None:
             _run_auto_refresh_accounts_pass()
         except Exception as exc:
             print(f"[serve] daily UTC refresh error: {exc}", file=sys.stderr)
+
+
+def _auto_refresh_worker_weekly_utc() -> None:
+    """Background: re-run refresh.py once per week on a fixed weekday/hour UTC."""
+    wday = _parse_auto_refresh_weekday()
+    hour = _parse_auto_refresh_weekly_hour()
+    logged = False
+    while True:
+        wait = _seconds_until_next_weekly_utc_slot()
+        if not logged:
+            nxt = datetime.now(timezone.utc) + timedelta(seconds=wait)
+            print(
+                f"[serve] weekly UTC refresh: next weekday={wday} hour={hour:02d} UTC run in {wait / 3600:.2f} h "
+                f"(~{nxt.strftime('%Y-%m-%d %H:%M')} UTC)",
+                file=sys.stderr,
+            )
+            logged = True
+        time.sleep(wait)
+        try:
+            print(
+                f"[serve] scheduled refresh (weekly, weekday={wday} {hour:02d}:00 UTC) …",
+                file=sys.stderr,
+            )
+            _run_auto_refresh_accounts_pass()
+        except Exception as exc:
+            print(f"[serve] weekly UTC refresh error: {exc}", file=sys.stderr)
 
 
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
@@ -488,20 +550,50 @@ def main() -> None:
         "(localhost OR CORALOGIX_DASH_TRUST_X_FORWARDED_FOR=1 + CORALOGIX_DASH_ADMIN_ALLOW_CIDR behind nginx)"
     )
     print(f"  POST /api/refresh — queue refresh.py in background (does not block other API calls)")
-    _daily_raw = os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC")
-    if _daily_raw is None:
-        daily_utc = True
-    else:
-        daily_utc = str(_daily_raw).strip().lower() not in ("0", "false", "no", "off")
+    _daily_key = os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC")
+    daily_on = _env_truthy("CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC") if _daily_key is not None else False
+
+    _w_raw = (os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_UTC") or "").strip()
+    weekly_off = _w_raw.lower() in ("0", "false", "no", "off")
+
     ar = int(os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_SEC", "3600"))
     acc_mode = os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS", "default")
-    if daily_utc:
+
+    daily_explicit_off = _daily_key is not None and not daily_on
+    legacy_interval_only = daily_explicit_off and _w_raw == ""
+
+    if daily_on:
         threading.Thread(
             target=_auto_refresh_worker_daily_utc, name="dash-auto-refresh-daily-utc", daemon=True
         ).start()
         print(
             f"  Auto-refresh: daily at 00:00 UTC · accounts={acc_mode!r} "
-            f"(set CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=0 to use interval instead)"
+            f"(set CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_UTC=0 and CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=0 for interval)"
+        )
+    elif legacy_interval_only:
+        if ar > 0:
+            threading.Thread(
+                target=_auto_refresh_worker_interval, name="dash-auto-refresh-interval", daemon=True
+            ).start()
+            print(
+                f"  Auto-refresh: every {ar}s · accounts={acc_mode!r} "
+                f"(legacy: CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=0, no weekly env; "
+                f"omit DAILY key for weekly Mon 00 UTC)"
+            )
+        else:
+            print(
+                "  Auto-refresh: off (CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=0, "
+                "CORALOGIX_DASH_AUTO_REFRESH_SEC=0)"
+            )
+    elif not weekly_off:
+        threading.Thread(
+            target=_auto_refresh_worker_weekly_utc, name="dash-auto-refresh-weekly-utc", daemon=True
+        ).start()
+        wd, wh = _parse_auto_refresh_weekday(), _parse_auto_refresh_weekly_hour()
+        print(
+            f"  Auto-refresh: weekly (weekday={wd} {wh:02d}:00 UTC) · accounts={acc_mode!r} "
+            f"(CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_WEEKDAY / _HOUR; "
+            f"set CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=1 for daily, or WEEKLY_UTC=0 for interval)"
         )
     elif ar > 0:
         threading.Thread(
@@ -512,7 +604,10 @@ def main() -> None:
             f"(set CORALOGIX_DASH_AUTO_REFRESH_SEC=0 to disable)"
         )
     else:
-        print("  Auto-refresh: off (CORALOGIX_DASH_AUTO_REFRESH_DAILY_UTC=0 and CORALOGIX_DASH_AUTO_REFRESH_SEC=0)")
+        print(
+            "  Auto-refresh: off (set CORALOGIX_DASH_AUTO_REFRESH_WEEKLY_UTC=0, "
+            "omit or disable daily, and CORALOGIX_DASH_AUTO_REFRESH_SEC=0)"
+        )
     print(f"  See accounts/manifest.example.json\n")
     server = ThreadingHTTPServer(("127.0.0.1", PORT), DashboardHandler)
     try:
