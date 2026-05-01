@@ -138,24 +138,6 @@
     }
     .dash-add-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
 
-    .live-badge {
-      display: flex; align-items: center; gap: 6px;
-      background: rgba(52,211,153,0.12);
-      border: 1px solid rgba(52,211,153,0.28);
-      color: var(--green);
-      padding: 5px 12px; border-radius: 20px;
-      font-size: 12px; font-weight: 600;
-    }
-    .live-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--green);
-      animation: pulse-dot 2s infinite;
-    }
-    @keyframes pulse-dot {
-      0%,100% { opacity:1; transform:scale(1); box-shadow: 0 0 0 0 rgba(52,211,153,0.45); }
-      50%      { opacity:1; transform:scale(1.1); box-shadow: 0 0 0 4px rgba(52,211,153,0); }
-    }
-
     .btn-ghost {
       display: flex; align-items: center; gap: 6px;
       padding: 6px 14px; border-radius: 8px;
@@ -1093,10 +1075,6 @@
       </svg>
       Expand All
     </button>
-    <div class="live-badge">
-      <div class="live-dot"></div>
-      Live
-    </div>
     <div class="timestamp" id="ts">Loaded: …</div>
   </div>
 </header>
@@ -1314,7 +1292,7 @@
     <div>
       <div class="page-title" id="dashPageTitle">Account overview</div>
       <div class="page-subtitle" id="dashPageSubtitle">Real-time security data · Coralogix</div>
-      <div id="page-live-hint" style="font-size:12px;color:var(--muted);margin-top:6px;max-width:720px;line-height:1.45;"></div>
+      <div id="page-data-hint" style="font-size:12px;color:var(--muted);margin-top:6px;max-width:720px;line-height:1.45;"></div>
     </div>
     <div class="account-pill">
       <div class="account-avatar">🛍️</div>
@@ -1853,7 +1831,7 @@
           <div class="panel">
             <div class="panel-header">
               <div class="panel-title">📊 Open incidents by priority</div>
-              <span class="panel-badge badge-red">Live · P1–P5</span>
+              <span class="panel-badge badge-red">Open · P1–P5</span>
             </div>
             <div class="panel-body">
               <div class="chart-wrap"><canvas id="incidentPriorityChart"></canvas></div>
@@ -2250,6 +2228,7 @@ function dashReapplyFromDataJson() {
   updateOverallAccountSummary();
   applyDashboardHeaderBranding();
   syncEditEnvButton();
+  if (typeof refreshPageDataHint === 'function') refreshPageDataHint();
 }
 
 function dashCaptureSnapshotPollState(fn, attemptsLeft) {
@@ -2869,7 +2848,7 @@ function applyDashboardHeaderBranding() {
   var tTitle = document.getElementById('dashPageTitle');
   if (tTitle) tTitle.textContent = label + ' · Account overview';
   var tSub = document.getElementById('dashPageSubtitle');
-  if (tSub) tSub.textContent = 'Real-time security data · Coralogix ' + region;
+  if (tSub) tSub.textContent = 'Security overview · Coralogix ' + region;
   var tBc = document.getElementById('dashBreadcrumbRegion');
   if (tBc) tBc.textContent = region + ' region';
   var tNm = document.getElementById('dashHeaderAccountName');
@@ -3429,7 +3408,7 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (e) { /* ignore */ }
 
 // ─────────────────────────────────────────
-// REAL DATA from Coralogix (fetched live)
+// REAL DATA from Coralogix (from data.json snapshot)
 // ─────────────────────────────────────────
 
 // Open Incidents — populated from data.json.incidents (refresh.py → Coralogix Incidents API, last 24h UTC)
@@ -3492,7 +3471,7 @@ var alertHygiene = (DASH_DATA.alerts && DASH_DATA.alerts.hygiene && typeof DASH_
   ? DASH_DATA.alerts.hygiene
   : {};
 
-/** Live alert rows from refresh.py → data.json.alerts.items (falls back to static demo below). */
+/** Alert rows from refresh.py → data.json.alerts.items (falls back to static demo below). */
 var _liveAlertItems = (DASH_DATA.alerts && Array.isArray(DASH_DATA.alerts.items) && DASH_DATA.alerts.items.length)
   ? DASH_DATA.alerts.items : null;
 
@@ -3501,13 +3480,13 @@ function _refreshedLabel() {
   return new Date(DASH_DATA._meta.refreshed_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-(function setPageLiveHint() {
-  const el = document.getElementById('page-live-hint');
+function refreshPageDataHint() {
+  const el = document.getElementById('page-data-hint');
   if (!el) return;
   const ok = window.__dashDataLoadOk;
   const parts = [];
   if (ok) {
-    parts.push('<strong>Live from data.json</strong> · snapshot <strong>' + escHtml(_refreshedLabel()) + '</strong>.');
+    parts.push('<strong>Snapshot from data.json</strong> · last refresh <strong>' + escHtml(_refreshedLabel()) + '</strong>.');
     parts.push('Integrations, extensions, incidents, KPIs, charts, and top definitions (Active Incidents) use this snapshot.');
     const _liHint = DASH_DATA.log_ingestion;
     if (_liHint && !_liHint.error && Array.isArray(_liHint.items) && _liHint.items.length) {
@@ -3533,7 +3512,9 @@ function _refreshedLabel() {
     parts.push('Load via <code>python3 serve.py</code> and run <code>python3 refresh.py</code> so <code>data.json</code> populates.');
   }
   el.innerHTML = parts.join(' ');
-})();
+}
+
+refreshPageDataHint();
 
 function _guessAlertSource(name) {
   const s = String(name || '').toLowerCase();
@@ -4597,7 +4578,7 @@ extensionUpdates.forEach(u => {
   }
 })();
 
-// Live clock
+// Clock display (top of dashboard)
 function updateTime() {
   const now = new Date();
   const _metaRa = DASH_DATA._meta && DASH_DATA._meta.refreshed_at;
@@ -5192,7 +5173,7 @@ function applyAhcOverlapUIFlags(ahcPresent) {
     return `<div style="margin-top:8px;"><b>Rule names</b> (${sup.items.length})<br>${chips}${more}</div>`;
   }
 
-  // ── Live values from data.json (via DASH_DATA loaded above) ─────────────
+  // ── Values from data.json (via DASH_DATA loaded above) ─────────────
   const _alerts  = _d('alerts',      {});
   const _ext     = _d('extensions',  { items: [] });
   const _wh      = _d('webhooks',    { items: [] });
@@ -5396,7 +5377,7 @@ function applyAhcOverlapUIFlags(ahcPresent) {
         detail: (() => {
           const policies = tcoPolicies.map(p => chip(`${p.name} · ${p.priority || 'unset'}`, '#4f46e5', 'rgba(79,70,229,0.08)')).join(' ');
           return `<b>${tcoCount} TCO polic${tcoCount === 1 ? 'y' : 'ies'} configured</b> — refreshed ${refreshedAt}:${tcoCount > 0 ? '<br>' + policies : ''}<br>
-            <b>Live tier share of total ingested data (cx_data_usage_units):</b><br>
+            <b>Tier share of total ingested data (cx_data_usage_units):</b><br>
             ${bar(95.22, '#059669', '95.22% · High (Frequent)')}
             ${bar(4.78, '#ea580c', '4.78% · Medium (Monitoring)')}
             ${bar(0, '#94a3b8', '~0% · Low')}

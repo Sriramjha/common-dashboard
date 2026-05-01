@@ -149,7 +149,7 @@ def _seconds_until_next_weekly_utc_slot() -> float:
 
 def _run_auto_refresh_accounts_pass() -> None:
     """One refresh cycle for all accounts selected by CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS."""
-    mode = os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS", "default").strip().lower()
+    mode = os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS", "all").strip().lower()
     if mode == "all":
         from accounts_config import list_accounts_public, load_manifest
 
@@ -391,8 +391,9 @@ class DashboardHandler(NoCacheHandler):
         except OSError as e:
             self._send_json({"ok": False, "error": str(e)}, status=500)
             return
-        # Do not block HTTP on refresh.py (often several minutes: incidents, never-triggered correlation, etc.).
-        # Browsers/proxies typically time out long POSTs — same pattern as env save + refresh.
+        # Do not block HTTP on refresh.py (can run many minutes).
+        # Initial data pull: refresh.py --account <id> in background (serialized with other refreshes).
+        # Ongoing updates: scheduled pass uses CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS (default all manifest rows).
         def _run_first_refresh() -> None:
             print(f"[serve] background first refresh.py for new account {aid!r} …", file=sys.stderr)
             res = run_refresh_py(aid)
@@ -557,7 +558,7 @@ def main() -> None:
     weekly_off = _w_raw.lower() in ("0", "false", "no", "off")
 
     ar = int(os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_SEC", "3600"))
-    acc_mode = os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS", "default")
+    acc_mode = os.environ.get("CORALOGIX_DASH_AUTO_REFRESH_ACCOUNTS", "all")
 
     daily_explicit_off = _daily_key is not None and not daily_on
     legacy_interval_only = daily_explicit_off and _w_raw == ""
