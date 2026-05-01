@@ -4130,6 +4130,11 @@ def _should_run_never_triggered_correlation(target: List[str]) -> bool:
     return "alerts" in t or "incidents" in t
 
 
+# 30d cx_alerts correlation: computed once in attach_never_triggered_30d, reused in
+# attach_alert_hygiene. Removed from results before writing data.json (see run()).
+_REFRESH_CX_ALERTS_CORR_30D_KEY = "_refresh_cx_alerts_corr_30d"
+
+
 def attach_never_triggered_30d(results: Dict[str, Any], target: List[str]) -> None:
     """Populate results['alerts']['never_triggered_30d'] when alerts + correlation are available."""
     if not _should_run_never_triggered_correlation(target):
@@ -4144,6 +4149,7 @@ def attach_never_triggered_30d(results: Dict[str, Any], target: List[str]) -> No
     days = 30
     def_names = _alert_definition_names_from_items(items)
     corr = _correlation_rows_from_cx_alerts_by_definition(days, definition_names=def_names)
+    results[_REFRESH_CX_ALERTS_CORR_30D_KEY] = corr
     if corr.get("error") and not corr.get("rows"):
         al["never_triggered_30d"] = build_never_triggered_definitions(
             items,
@@ -5095,9 +5101,11 @@ def attach_alert_hygiene(results: Dict[str, Any], target: List[str]) -> None:
 
     timeline: List[Dict[str, Any]] = []
     if _should_fetch_hygiene_incidents(target):
-        corr = _correlation_rows_from_cx_alerts_by_definition(
-            30, definition_names=_alert_definition_names_from_items(items)
-        )
+        corr = results.pop(_REFRESH_CX_ALERTS_CORR_30D_KEY, None)
+        if corr is None:
+            corr = _correlation_rows_from_cx_alerts_by_definition(
+                30, definition_names=_alert_definition_names_from_items(items)
+            )
         ib30["window_start"] = str(corr.get("window_start") or "")
         ib30["window_end"] = str(corr.get("window_end") or "")
         ib30["truncated"] = False
@@ -5341,8 +5349,10 @@ def run(
 
     if dry_run:
         print("── DRY RUN — data file NOT written ───────────────────────")
+        results.pop(_REFRESH_CX_ALERTS_CORR_30D_KEY, None)
         print(json.dumps(results, indent=2, default=str))
     else:
+        results.pop(_REFRESH_CX_ALERTS_CORR_30D_KEY, None)
         atomic_write_text(df, json.dumps(results, indent=2, default=str))
         size_kb = df.stat().st_size / 1024
         abs_written = str(df.resolve())
