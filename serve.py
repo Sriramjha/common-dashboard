@@ -319,6 +319,9 @@ class DashboardHandler(NoCacheHandler):
         if path == "/api/accounts":
             self._send_accounts_json()
             return
+        if path == "/api/customer-info":
+            self._get_customer_info()
+            return
         aid = self._account_id_from_env_api_path(path)
         if aid is not None:
             self._get_account_env(aid)
@@ -330,6 +333,9 @@ class DashboardHandler(NoCacheHandler):
         if path == "/api/accounts/add":
             self._post_add_account()
             return
+        if path == "/api/customer-info":
+            self._post_customer_info()
+            return
         aid = self._account_id_from_env_api_path(path)
         if aid is not None:
             self._post_account_env(aid)
@@ -338,6 +344,13 @@ class DashboardHandler(NoCacheHandler):
             self._post_refresh()
             return
         print(f"[serve] POST unmatched path {path!r} (raw {self.path!r})", file=sys.stderr)
+        self.send_error(404, "Not Found")
+
+    def do_DELETE(self) -> None:
+        path = self._request_path()
+        if path == "/api/customer-info":
+            self._delete_customer_info()
+            return
         self.send_error(404, "Not Found")
 
     def _send_json(self, payload: object, status: int = 200) -> None:
@@ -537,6 +550,88 @@ class DashboardHandler(NoCacheHandler):
             threading.Thread(target=_run_bg, name=f"env-edit-refresh-{account_id}", daemon=True).start()
             out["refresh"] = {"ok": True, "async": True}
         self._send_json(out)
+
+
+    def _account_id_from_query(self) -> str | None:
+        """Parse ?account=<id> from self.path, return sanitized id or None."""
+        try:
+            from urllib.parse import parse_qs, urlparse as _urlparse
+
+            q = parse_qs(_urlparse(self.path or "").query or "")
+            vals = q.get("account") or q.get("accountId") or []
+            if not vals:
+                return None
+            v = str(vals[0] or "").strip()
+            return v or None
+        except Exception:
+            return None
+
+    def _read_json_body(self, max_bytes: int = 8192) -> tuple[dict | None, str | None]:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length <= 0 or length > max_bytes:
+            return None, "Bad Content-Length"
+        try:
+            raw = self.rfile.read(length).decode("utf-8", errors="replace")
+            data = json.loads(raw)
+        except (OSError, json.JSONDecodeError):
+            return None, "Invalid JSON body"
+        if not isinstance(data, dict):
+            return None, "JSON object expected"
+        return data, None
+
+    def _get_customer_info(self) -> None:
+        aid = self._account_id_from_query() or "default"
+        try:
+            from customer_info_overrides import fields as ci_fields, read_overrides
+
+            payload = read_overrides(aid)
+            payload["allowed_fields"] = list(ci_fields())
+            self._send_json({"ok": True, **payload})
+        except ValueError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=400)
+        except Exception as e:
+            print(f"[serve] GET /api/customer-info {aid!r}: {e}", file=sys.stderr)
+            self._send_json({"ok": False, "error": str(e)[:300]}, status=500)
+
+    def _post_customer_info(self) -> None:
+        data, err = self._read_json_body()
+        if err is not None:
+            self._send_json({"ok": False, "error": err}, status=400)
+            return
+        aid = str((data or {}).get("account") or (data or {}).get("accountId") or "default").strip() or "default"
+        field = str((data or {}).get("field") or "").strip()
+        value = (data or {}).get("value")
+        try:
+            from customer_info_overrides import upsert_override
+
+            res = upsert_override(aid, field, value)
+            self._send_json({"ok": True, **res})
+        except ValueError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=400)
+        except Exception as e:
+            print(f"[serve] POST /api/customer-info {aid!r} {field!r}: {e}", file=sys.stderr)
+            self._send_json({"ok": False, "error": str(e)[:300]}, status=500)
+
+    def _delete_customer_info(self) -> None:
+        data, err = self._read_json_body()
+        if err is not None:
+            self._send_json({"ok": False, "error": err}, status=400)
+            return
+        aid = str((data or {}).get("account") or (data or {}).get("accountId") or "default").strip() or "default"
+        field = str((data or {}).get("field") or "").strip()
+        try:
+            from customer_info_overrides import clear_override
+
+            res = clear_override(aid, field)
+            self._send_json({"ok": True, **res})
+        except ValueError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=400)
+        except Exception as e:
+            print(f"[serve] DELETE /api/customer-info {aid!r} {field!r}: {e}", file=sys.stderr)
+            self._send_json({"ok": False, "error": str(e)[:300]}, status=500)
 
 
 def main() -> None:

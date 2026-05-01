@@ -25,6 +25,9 @@ data.*.json
 accounts/manifest.json
 _debug_data_usage_body.txt
 
+# Per-account Customer Info manual overrides (user-entered, not from refresh.py)
+accounts/overrides/
+
 # API tool output cache (may contain log data)
 agent-tools/
 

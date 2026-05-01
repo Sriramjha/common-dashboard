@@ -357,6 +357,45 @@
       letter-spacing: -0.02em; word-break: break-word;
     }
 
+    /* Customer Info — manual override editor (inline edit/save/clear) */
+    .dash-sum-card.dash-sum-editable { position: relative; }
+    .dash-sum-card.dash-sum-editable .dash-sum-edit-btn {
+      position: absolute; top: 8px; right: 8px;
+      width: 22px; height: 22px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: transparent; color: var(--muted);
+      cursor: pointer; opacity: 0; transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+      font-size: 12px; line-height: 1;
+    }
+    .dash-sum-card.dash-sum-editable:hover .dash-sum-edit-btn,
+    .dash-sum-card.dash-sum-editable:focus-within .dash-sum-edit-btn { opacity: 1; }
+    .dash-sum-card.dash-sum-editable .dash-sum-edit-btn:hover { background: var(--surface3, var(--surface2)); color: var(--text); }
+    .dash-sum-card.dash-sum-editable.is-overridden { border-color: var(--accent, #4c8bf5); }
+    .dash-sum-card.dash-sum-editable.is-overridden .dash-sum-label::after {
+      content: " · MANUAL"; color: var(--accent, #4c8bf5); font-weight: 800;
+    }
+    .dash-sum-edit-row {
+      display: flex; gap: 6px; align-items: center; margin-top: 4px;
+    }
+    .dash-sum-edit-row input[type="text"],
+    .dash-sum-edit-row input[type="number"] {
+      flex: 1 1 auto; min-width: 0;
+      padding: 6px 8px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface3, var(--surface2));
+      color: var(--text); font: inherit;
+    }
+    .dash-sum-edit-row button {
+      padding: 6px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface3, var(--surface2));
+      color: var(--text); cursor: pointer; font-weight: 600; font-size: 12px;
+    }
+    .dash-sum-edit-row button.is-primary {
+      background: var(--accent, #4c8bf5); border-color: var(--accent, #4c8bf5); color: #fff;
+    }
+    .dash-sum-edit-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .dash-sum-edit-error { font-size: 10.5px; color: var(--red, #e57373); margin-top: 4px; }
+
     /* ════════════════════════════════════════
        GRID LAYOUTS
     ════════════════════════════════════════ */
@@ -1308,37 +1347,50 @@
       <span class="dash-summary-title">Customer info</span>
     </div>
     <div class="dash-summary-grid">
-      <div class="dash-sum-card" id="sum-card-c4c-am">
+      <div class="dash-sum-card dash-sum-editable" id="sum-card-c4c-am" data-ci-field="account_manager" data-ci-input-type="text" data-ci-source-sub="DataPrime · team metadata">
+        <button type="button" class="dash-sum-edit-btn" aria-label="Edit Account manager" title="Edit">✎</button>
         <div class="dash-sum-label">Account manager (C4C)</div>
         <div class="dash-sum-value dash-sum-value-text" id="sum-c4c-am">—</div>
         <div class="dash-sum-sub" id="sum-c4c-am-sub">DataPrime · team metadata</div>
       </div>
-      <div class="dash-sum-card" id="sum-card-c4c-tam">
+      <div class="dash-sum-card dash-sum-editable" id="sum-card-c4c-tam" data-ci-field="tam" data-ci-input-type="text" data-ci-source-sub="DataPrime · team metadata">
+        <button type="button" class="dash-sum-edit-btn" aria-label="Edit TAM" title="Edit">✎</button>
         <div class="dash-sum-label">TAM (C4C)</div>
         <div class="dash-sum-value dash-sum-value-text" id="sum-c4c-tam">—</div>
         <div class="dash-sum-sub" id="sum-c4c-tam-sub">DataPrime · team metadata</div>
       </div>
-      <div class="dash-sum-card" id="sum-card-monday-devops">
+      <div class="dash-sum-card dash-sum-editable" id="sum-card-monday-devops" data-ci-field="devops_assignee" data-ci-input-type="text" data-ci-source-sub="Monday · Integration rows">
+        <button type="button" class="dash-sum-edit-btn" aria-label="Edit DevOps assignee" title="Edit">✎</button>
         <div class="dash-sum-label">DevOps assignee</div>
         <div class="dash-sum-value dash-sum-value-text" id="sum-monday-devops">—</div>
         <div class="dash-sum-sub" id="sum-monday-devops-sub">Monday · Integration rows</div>
       </div>
-      <div class="dash-sum-card" id="sum-card-monday-src-person">
+      <div class="dash-sum-card dash-sum-editable" id="sum-card-monday-src-person" data-ci-field="src_consultant" data-ci-input-type="text" data-ci-source-sub="Monday · Integration rows">
+        <button type="button" class="dash-sum-edit-btn" aria-label="Edit SRC Consultant" title="Edit">✎</button>
         <div class="dash-sum-label">SRC Consultant</div>
         <div class="dash-sum-value dash-sum-value-text" id="sum-monday-src-person">—</div>
         <div class="dash-sum-sub" id="sum-monday-src-person-sub">Monday · Integration rows</div>
       </div>
-      <div class="dash-sum-card" id="sum-card-c4c-arr">
+      <div class="dash-sum-card dash-sum-editable" id="sum-card-c4c-arr" data-ci-field="arr" data-ci-input-type="text" data-ci-source-sub="DataPrime · originating team enrichment">
+        <button type="button" class="dash-sum-edit-btn" aria-label="Edit Account ARR" title="Edit">✎</button>
         <div class="dash-sum-label">Account ARR (C4C)</div>
         <div class="dash-sum-value dash-sum-value-text" id="sum-c4c-arr">—</div>
         <div class="dash-sum-sub" id="sum-c4c-arr-sub">DataPrime · originating team enrichment</div>
       </div>
-      <div class="dash-sum-card" id="sum-card-c4c-allocated-units">
+      <div class="dash-sum-card dash-sum-editable" id="sum-card-c4c-allocated-units" data-ci-field="daily_plan_units" data-ci-input-type="number" data-ci-source-sub="Prometheus · cx_data_plan_units_per_day">
+        <button type="button" class="dash-sum-edit-btn" aria-label="Edit Daily plan units" title="Edit">✎</button>
         <div class="dash-sum-label">Daily plan units (quota)</div>
         <div class="dash-sum-value" id="sum-c4c-allocated-units">—</div>
         <div class="dash-sum-sub" id="sum-c4c-allocated-units-sub">Prometheus · cx_data_plan_units_per_day</div>
       </div>
-      <div class="dash-sum-card" id="sum-card-src-customer">
+      <div class="dash-sum-card dash-sum-editable" id="sum-card-contracted-units" data-ci-field="contracted_units" data-ci-input-type="number" data-ci-source-sub="Manual entry only">
+        <button type="button" class="dash-sum-edit-btn" aria-label="Edit Contracted Units" title="Edit">✎</button>
+        <div class="dash-sum-label">Contracted Units</div>
+        <div class="dash-sum-value" id="sum-contracted-units">—</div>
+        <div class="dash-sum-sub" id="sum-contracted-units-sub">Manual entry only</div>
+      </div>
+      <div class="dash-sum-card dash-sum-editable" id="sum-card-src-customer" data-ci-field="src_customer" data-ci-input-type="text" data-ci-source-sub="Outbound webhook name contains SRC and Orchestrator (whole words)">
+        <button type="button" class="dash-sum-edit-btn" aria-label="Edit SRC customer" title="Edit">✎</button>
         <div class="dash-sum-label">SRC customer</div>
         <div class="dash-sum-value" id="sum-src-yesno">—</div>
         <div class="dash-sum-sub" id="sum-src-yesno-sub">Outbound webhook name contains SRC and Orchestrator (whole words)</div>
@@ -2191,6 +2243,268 @@ function _safeDataFilename(name) {
   return /^[a-zA-Z0-9._-]+$/.test(s) ? s : 'data.json';
 }
 
+/* ─── Customer Info — manual overrides ───────────────────────────────────────
+   Cards in the Customer info section have an editable affordance. When a
+   manual override is saved via POST /api/customer-info, the card displays the
+   override instead of whatever Monday/C4C/Prometheus/derived value the rest
+   of dashReapplyFromDataJson() set. Cleared overrides fall back to source
+   (Contracted Units has no source — it stays "—").
+   --------------------------------------------------------------------------- */
+window.__dashCustomerOverrides = window.__dashCustomerOverrides || { account: 'default', fields: {} };
+
+function dashActiveAccountId() {
+  try {
+    var sel = document.getElementById('dashAccountSelect');
+    if (sel && sel.value) return String(sel.value);
+  } catch (e) { /* noop */ }
+  try {
+    var saved = localStorage.getItem('coralogixDashAccountId');
+    if (saved) return String(saved);
+  } catch (e) { /* noop */ }
+  return 'default';
+}
+
+function _ciFmtNumber(s) {
+  if (s == null || s === '') return '—';
+  var n = Number(String(s).replace(/[, ]/g, ''));
+  if (!Number.isFinite(n)) return String(s);
+  return n.toLocaleString();
+}
+
+function _ciFormatTimestamp(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function _ciCardForField(field) {
+  return document.querySelector('.dash-sum-editable[data-ci-field="' + String(field).replace(/"/g, '\\"') + '"]');
+}
+
+function _ciValueElInCard(card) { return card ? card.querySelector('.dash-sum-value') : null; }
+function _ciSubElInCard(card) { return card ? card.querySelector('.dash-sum-sub') : null; }
+
+function _ciDisplayValueFor(field, raw) {
+  if (field === 'daily_plan_units' || field === 'contracted_units') return _ciFmtNumber(raw);
+  return raw == null || String(raw).trim() === '' ? '—' : String(raw);
+}
+
+/** Apply current overrides to all editable cards. Source-driven render must run first. */
+function applyCustomerInfoOverridesToCards() {
+  var st = window.__dashCustomerOverrides || { fields: {} };
+  var fields = st.fields || {};
+  var cards = document.querySelectorAll('.dash-sum-editable[data-ci-field]');
+  cards.forEach(function (card) {
+    var f = card.getAttribute('data-ci-field');
+    if (!f) return;
+    var ovr = fields[f];
+    var valEl = _ciValueElInCard(card);
+    var subEl = _ciSubElInCard(card);
+    if (ovr && ovr.value != null && String(ovr.value).trim() !== '') {
+      card.classList.add('is-overridden');
+      if (valEl) valEl.textContent = _ciDisplayValueFor(f, ovr.value);
+      if (subEl) {
+        var when = _ciFormatTimestamp(ovr.updated_at);
+        subEl.textContent = 'Manual override' + (when ? ' · ' + when : '');
+      }
+    } else {
+      card.classList.remove('is-overridden');
+      // Contracted Units has no source — render "—" + default sub line every time.
+      if (f === 'contracted_units') {
+        if (valEl) valEl.textContent = '—';
+        if (subEl) subEl.textContent = card.getAttribute('data-ci-source-sub') || 'Manual entry only';
+      }
+      // Other fields: leave the source-driven render alone (already applied earlier).
+    }
+  });
+}
+
+function loadCustomerInfoOverrides(accountId) {
+  var aid = accountId || dashActiveAccountId();
+  var url = dashApiUrl('/api/customer-info?account=' + encodeURIComponent(aid) + '&_=' + Date.now());
+  return fetch(url, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (j && j.ok !== false) {
+        window.__dashCustomerOverrides = {
+          account: j.account || aid,
+          fields: (j.fields && typeof j.fields === 'object') ? j.fields : {},
+          allowedFields: Array.isArray(j.allowed_fields) ? j.allowed_fields : null,
+        };
+      } else {
+        window.__dashCustomerOverrides = { account: aid, fields: {} };
+      }
+      applyCustomerInfoOverridesToCards();
+    })
+    .catch(function () {
+      window.__dashCustomerOverrides = { account: aid, fields: {} };
+      applyCustomerInfoOverridesToCards();
+    });
+}
+
+function _ciSendPost(method, body) {
+  return fetch(dashApiUrl('/api/customer-info'), {
+    method: method,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    body: JSON.stringify(body),
+  }).then(function (r) {
+    return r.json().then(function (j) { return { status: r.status, body: j }; });
+  });
+}
+
+function saveCustomerInfoOverride(field, value) {
+  var aid = dashActiveAccountId();
+  return _ciSendPost('POST', { account: aid, field: field, value: value }).then(function (res) {
+    if (!res || !res.body || res.body.ok === false) {
+      throw new Error((res && res.body && res.body.error) || ('HTTP ' + (res && res.status)));
+    }
+    return loadCustomerInfoOverrides(aid);
+  });
+}
+
+function clearCustomerInfoOverride(field) {
+  var aid = dashActiveAccountId();
+  return _ciSendPost('DELETE', { account: aid, field: field }).then(function (res) {
+    if (!res || !res.body || res.body.ok === false) {
+      throw new Error((res && res.body && res.body.error) || ('HTTP ' + (res && res.status)));
+    }
+    // Clearing means: re-render source-driven values for this field, then re-overlay overrides.
+    if (typeof dashReapplyFromDataJson === 'function') {
+      dashReapplyFromDataJson();
+    } else {
+      return loadCustomerInfoOverrides(aid);
+    }
+  });
+}
+
+/** Open inline editor inside a card; restores original markup on Cancel/Save. */
+function openCustomerInfoEditor(card) {
+  if (!card || card.dataset.ciEditing === '1') return;
+  var field = card.getAttribute('data-ci-field');
+  if (!field) return;
+  var inputType = card.getAttribute('data-ci-input-type') === 'number' ? 'number' : 'text';
+  var valEl = _ciValueElInCard(card);
+  var subEl = _ciSubElInCard(card);
+  if (!valEl || !subEl) return;
+
+  card.dataset.ciEditing = '1';
+  var origValueHtml = valEl.outerHTML;
+  var origSubHtml = subEl.outerHTML;
+
+  var st = window.__dashCustomerOverrides || { fields: {} };
+  var ovr = (st.fields || {})[field];
+  var current = ovr && ovr.value != null ? String(ovr.value) : (valEl.textContent || '').trim();
+  if (current === '—') current = '';
+
+  var holder = document.createElement('div');
+  holder.className = 'dash-sum-edit-row';
+  var input = document.createElement('input');
+  input.type = inputType;
+  if (inputType === 'number') {
+    input.step = 'any';
+    input.min = '0';
+    input.placeholder = 'e.g. 100000';
+  } else {
+    input.placeholder = 'Enter value';
+    input.maxLength = 256;
+  }
+  input.value = current;
+  var saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'is-primary';
+  saveBtn.textContent = 'Save';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  var clearBtn = null;
+  if (ovr && ovr.value != null && String(ovr.value).trim() !== '') {
+    clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.textContent = 'Clear';
+    clearBtn.title = 'Remove the manual override (return to source value, if any)';
+  }
+  holder.appendChild(input);
+  holder.appendChild(saveBtn);
+  holder.appendChild(cancelBtn);
+  if (clearBtn) holder.appendChild(clearBtn);
+
+  var errEl = document.createElement('div');
+  errEl.className = 'dash-sum-edit-error';
+  errEl.style.display = 'none';
+
+  // Replace value div with editor; hide sub temporarily.
+  valEl.style.display = 'none';
+  subEl.style.display = 'none';
+  valEl.parentNode.insertBefore(holder, valEl.nextSibling);
+  holder.parentNode.insertBefore(errEl, holder.nextSibling);
+  setTimeout(function () { try { input.focus(); input.select(); } catch (e) { /* noop */ } }, 0);
+
+  function restoreOriginal() {
+    if (holder.parentNode) holder.parentNode.removeChild(holder);
+    if (errEl.parentNode) errEl.parentNode.removeChild(errEl);
+    valEl.style.display = '';
+    subEl.style.display = '';
+    delete card.dataset.ciEditing;
+  }
+
+  function setBusy(on) {
+    saveBtn.disabled = !!on;
+    cancelBtn.disabled = !!on;
+    if (clearBtn) clearBtn.disabled = !!on;
+    input.disabled = !!on;
+  }
+
+  function showError(msg) {
+    errEl.textContent = String(msg || 'Failed');
+    errEl.style.display = 'block';
+  }
+
+  function doSave() {
+    var v = String(input.value || '').trim();
+    if (!v) { showError('Value is required (use Clear to remove an override)'); return; }
+    setBusy(true);
+    saveCustomerInfoOverride(field, v).then(function () {
+      restoreOriginal();
+    }).catch(function (e) {
+      setBusy(false);
+      showError((e && e.message) ? e.message : 'Save failed');
+    });
+  }
+
+  function doClear() {
+    setBusy(true);
+    clearCustomerInfoOverride(field).then(function () {
+      restoreOriginal();
+    }).catch(function (e) {
+      setBusy(false);
+      showError((e && e.message) ? e.message : 'Clear failed');
+    });
+  }
+
+  saveBtn.addEventListener('click', doSave);
+  cancelBtn.addEventListener('click', restoreOriginal);
+  if (clearBtn) clearBtn.addEventListener('click', doClear);
+  input.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); doSave(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); restoreOriginal(); }
+  });
+}
+
+/** Delegated click handler for all pencil edit buttons; bound once. */
+(function _ciBindEditDelegation() {
+  if (window.__dashCiEditBound) return;
+  window.__dashCiEditBound = true;
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || !(t.classList && t.classList.contains('dash-sum-edit-btn'))) return;
+    var card = t.closest('.dash-sum-editable[data-ci-field]');
+    if (!card) return;
+    ev.preventDefault();
+    openCustomerInfoEditor(card);
+  });
+})();
+
 /** Populate account dropdown from GET /api/accounts JSON. Optional forceAccountId selects that row after rebuild. */
 function dashApplyAccountsConfig(cfg, forceAccountId) {
   var accounts = (cfg && Array.isArray(cfg.accounts) && cfg.accounts.length)
@@ -2229,6 +2543,10 @@ function dashReapplyFromDataJson() {
   applyDashboardHeaderBranding();
   syncEditEnvButton();
   if (typeof refreshPageDataHint === 'function') refreshPageDataHint();
+  // Customer Info: fetch latest manual overrides and overlay on top of source-driven render.
+  if (typeof loadCustomerInfoOverrides === 'function') {
+    loadCustomerInfoOverrides();
+  }
 }
 
 function dashCaptureSnapshotPollState(fn, attemptsLeft) {
