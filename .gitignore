@@ -2,7 +2,11 @@
 # AWS root/IAM access key exports (never commit)
 *accessKeys*.csv
 Sri_User_accessKeys.csv
+*.pem
 deploy/.keys/
+
+# AHC: install Prettier globally or via npm — do not vendor the bundle in git
+sb-ahc-automator-main/modules/prettier/
 
 .env
 *.env

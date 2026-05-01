@@ -10,6 +10,8 @@ Automated health check tool for Coralogix accounts. Runs comprehensive checks ac
 - **MCP-based checks** using DataPrime queries for advanced log analysis
 - **AWS Lambda deployment** for serverless execution
 
+Optional **output formatting**: install Prettier on your `PATH` (`npm i -g prettier`). The large vendored bundle under `modules/prettier` is not kept in git.
+
 ## Checks Included
 
 | Category | Checks |

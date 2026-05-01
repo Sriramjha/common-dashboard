@@ -1,5 +1,6 @@
 from modules.SBLogger import SBLogger
 import subprocess
+import shutil
 import yaml
 import os
 import importlib
@@ -175,13 +176,21 @@ class Main:
                     current_check.run_check()
                     self.sb_logger.check_done(check_name)
 
-                    prettier = os.path.join(self.code_dir, "modules", "prettier", "bin", "prettier")
-                    if prettier:
-                        subprocess.call([prettier, "-w", os.path.join(self.code_dir, "output")],
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL)
+                    out_dir = os.path.join(self.code_dir, "output")
+                    bundled = os.path.join(self.code_dir, "modules", "prettier", "bin", "prettier")
+                    prettier_bin = shutil.which("prettier") or (
+                        bundled if os.path.isfile(bundled) and os.access(bundled, os.X_OK) else None
+                    )
+                    if prettier_bin:
+                        subprocess.call(
+                            [prettier_bin, "-w", out_dir],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
                     else:
-                        self.sb_logger.warning("'prettier' couldn't run on the system")
+                        self.sb_logger.warning(
+                            "'prettier' not found — optional: npm i -g prettier, or add modules/prettier locally"
+                        )
                 except Exception as e:
                     # Log the error but continue with other checks
                     error_msg = str(e)
