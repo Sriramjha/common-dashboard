@@ -1,0 +1,76 @@
+name = "repository name"
+description = "this is a repository"
+proto_out_dir = "./temp"
+#
+#[actions]
+#  url = "github.com/coralogix/cx-api-actions/"
+#  revision = "186f40419a993ce325c93846597ff75c9e2a88a5"
+#  protocol = "ssh"
+#
+#[archive-logs]
+#  url = "github.com/coralogix/cx-api-archive/"
+#  revision = "f7e5da6a58e9d437860368f42f52d6fd79e7172d"
+#  protocol = "ssh"
+#
+#[archive-metrics]
+#  url = "github.com/coralogix/metrics-configurator/"
+#  revision = "252315ac91648f52bf3beabf8c55cae8ddc2b8ff"
+#  protocol = "ssh"
+#
+#[dataprime]
+#  url = "github.com/coralogix/cx-api-dataprime"
+#  revision = "080d6ee9a66f7bc9e54712213dceb04c68de6f4b"
+#  protocol = "ssh"
+
+[extensions-integrations-webhooks]
+  url = "github.com/coralogix/cx-api-extensions"
+  revision = "f08ff60f5c8836062c171127c007de32cbeced7a"
+  protocol = "ssh"
+#
+#[alerts_v3]
+#  url = "github.com/coralogix/cx-api-alerts/"
+#  revision = "9880cb95576f53e6ae033b07ff555a95c09c28df"
+#  protocol = "ssh"
+#
+#[cx-dashboards]
+#  url = "github.com/coralogix/cx-api-dashboards/"
+#  revision = "0d3a4b1f4f7a48da8f685ff260286c667458a0c3"
+#  protocol = "ssh"
+#
+#[e2m]
+#  url = "github.com/coralogix/cx-api-logs2metrics/"
+#  revision = "ec44a77572bf77cf5c731107238bbda65e7c1089"
+#  protocol = "ssh"
+#
+#[rules]
+#  url = "github.com/coralogix/rules-api-protobuf/"
+#  revision = "d1b33742b8465dfa1e101e4121bd0164873b166f"
+#  protocol = "ssh"
+#
+#[enrichments]
+#  url = "github.com/coralogix/cx-api-enrichment/"
+#  revision = "c73072cb13a9a0da5ec2871107bbe98c043b92cf"
+#  protocol = "ssh"
+#
+#[datausage]
+#  url = "github.com/coralogix/cx-api-data-usage"
+#  revision = "6950f8f3df5cbbc2537df92b74f6d09ad1f1a965"
+#  protocol = "ssh"
+
+[googleapi]
+  url = "github.com/googleapis/googleapis"
+  revision = "eb4c1ec02412e65c453ef0bfc4347731e64dcc82"
+  protocol = "ssh"
+  allow_policies = [
+    "/google/api/http.proto",
+    "/google/api/annotations.proto"
+  ]
+
+[protobuf]
+  url = "github.com/protocolbuffers/protobuf"
+  revision = "d99336559ed897f18fee879f0e39811b26be4c0c"
+  protocol = "ssh"
+  content_roots = ["/src"]
+  allow_policies = [
+    "*.proto"
+  ]

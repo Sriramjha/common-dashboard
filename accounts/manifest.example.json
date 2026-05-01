@@ -1,0 +1,17 @@
+{
+  "accounts": [
+    {
+      "id": "default",
+      "label": "Primary Coralogix account",
+      "dataFile": "data.json",
+      "secretsFile": ".env"
+    },
+    {
+      "id": "client_acme",
+      "label": "Acme Corp",
+      "dataFile": "data.client_acme.json",
+      "secretsFile": "accounts/secrets/client_acme.env",
+      "coralogixRegion": "US1"
+    }
+  ]
+}

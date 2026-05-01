@@ -1,0 +1,13 @@
+# Rsync merge rules — used with: rsync --filter="merge deploy/rsync-filters.txt"
+# P = protect paths on DESTINATION from deletion when --delete is used (.env not in Git, etc.)
+
+P .env
+P .env.*
+P accounts/secrets/
+P accounts/manifest.json
+P data.json
+P data.*.json
+
+# Do not sync metadata to EC2 (saves bandwidth)
+- .git/
+- /.cursor/

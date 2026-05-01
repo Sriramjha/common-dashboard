@@ -1,0 +1,18 @@
+# Core dependencies for AHC Lambda
+requests>=2.28.0
+PyYAML>=6.0
+grpclib>=0.4.0
+protobuf>=4.0.0
+
+# PDF generation
+reportlab>=4.0.0
+matplotlib>=3.7.0
+
+# gRPC support
+grpcio>=1.50.0
+grpcio-tools>=1.50.0
+# betterproto 2.x (beta) required for betterproto.grpc - use: pip install --pre
+betterproto==2.0.0b7
+
+# AWS Lambda specific (usually pre-installed)
+boto3>=1.26.0

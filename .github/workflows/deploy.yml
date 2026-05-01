@@ -1,0 +1,48 @@
+# Deploy to a single Ubuntu EC2 in ap-south-1 via SSH + rsync.
+#
+# Prerequisites (secrets in repo Settings → Secrets):
+#   EC2_SSH_PRIVATE_KEY  PEM for the deploy user / ubuntu
+#   EC2_HOST             Public or reachable IP/DNS from the runner (see deploy/README-DEPLOY.md)
+#   EC2_USER             e.g. ubuntu
+#
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rsync application + reload services
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          set -euo pipefail
+          test -n "${SSH_PRIVATE_KEY:-}" || { echo "Missing secret EC2_SSH_PRIVATE_KEY"; exit 1; }
+          test -n "${EC2_HOST:-}" || { echo "Missing secret EC2_HOST"; exit 1; }
+          EC2_USER="${EC2_USER:-ubuntu}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/ec2_deploy
+          chmod 600 ~/.ssh/ec2_deploy
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          RSYNC_SSH='ssh -i ~/.ssh/ec2_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new'
+          rsync -avz \
+            -e "$RSYNC_SSH" \
+            --delete \
+            --filter="merge deploy/rsync-filters.txt" \
+            ./ "${EC2_USER}@${EC2_HOST}:/opt/common-dashboard/"
+          $RSYNC_SSH "${EC2_USER}@${EC2_HOST}" \
+            'sudo systemctl enable common-dashboard nginx 2>/dev/null; sudo systemctl restart common-dashboard nginx'
