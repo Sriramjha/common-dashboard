@@ -63,7 +63,7 @@ fi
 echo "Loading AWS credentials from CSV (not printed)..."
 # UTF-8 BOM-safe parse; supports header: Access key ID, Secret access key
 eval "$(
-  python3 <<'PY' "$CRED_CSV"
+  python3 - "$CRED_CSV" <<'PY'
 import csv, shlex, sys
 path = sys.argv[1]
 with open(path, newline="", encoding="utf-8-sig") as f:
@@ -175,17 +175,29 @@ if [[ ! -f "$DEPLOY_PRIV" ]]; then
   chmod 600 "$DEPLOY_PRIV"
 fi
 
+echo "Preparing /opt/common-dashboard on EC2..."
+ssh -i "$PEM_OUT" -o StrictHostKeyChecking=accept-new "ubuntu@$PUB_IP" \
+  'sudo mkdir -p /opt/common-dashboard && sudo chown ubuntu:ubuntu /opt/common-dashboard'
+
 echo "Syncing application to EC2 (excluding secrets / venv)..."
 RSYNC_EXCLUDES=(
   --exclude '.git/'
   --exclude '.venv/'
   --exclude '.DS_Store'
+  --exclude '.env'
+  --exclude '.env.*'
+  --exclude 'accounts/secrets/'
+  --exclude 'accounts/manifest.json'
+  --exclude 'data.json'
+  --exclude 'data.*.json'
+  --exclude '__pycache__/'
+  --exclude '*.pyc'
   --exclude 'Sri_User_accessKeys.csv'
   --exclude '*accessKeys*.csv'
   --exclude 'deploy/.keys/'
   --exclude '.cursor/'
 )
-rsync -avz "${RSYNC_EXCLUDES[@]}" -e "ssh -i $PEM_OUT -o StrictHostKeyChecking=accept-new" \
+rsync -avz "${RSYNC_EXCLUDES[@]}" -e "ssh -i \"$PEM_OUT\" -o StrictHostKeyChecking=accept-new" \
   "$ROOT/" "ubuntu@$PUB_IP:/opt/common-dashboard/"
 
 echo "Running bootstrap on EC2..."
